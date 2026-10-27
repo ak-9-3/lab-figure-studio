@@ -11,3 +11,9 @@ table.dataTable tbody td { padding: 4px 8px; }
 /* A plot rendered for a wider container must shrink, never crop. */
 .shiny-plot-output img { max-width: 100%; height: auto; }
 .shiny-plot-output { overflow: hidden; }
+
+/* A download being prepared: dim the button so a second click is not needed. */
+.lab-busy { opacity: .55; pointer-events: none; cursor: progress; }
+
+/* More than ~8 bars: the two figure cards stack, each the full width. */
+.lab-wide > .bslib-grid-item { grid-column: 1 / -1 !important; }

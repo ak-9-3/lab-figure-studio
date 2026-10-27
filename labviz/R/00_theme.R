@@ -119,6 +119,48 @@ $(function () {
   Shiny.inputBindings.register(b, 'lab.color');
 });"
 
+# Downloads. Shiny opens each download in a new tab; in the web build that
+# tab is answered by the shinylive service worker, and Chrome receives an
+# empty page instead of the file (it saves "lda-freq_csv.html", then cancels).
+# So every download button fetches its file from inside the app and saves it
+# directly. Same files, same names, no new tab, no popup blocker.
+DOWNLOAD_JS <- "
+document.addEventListener('click', async function (e) {
+  var a = e.target.closest && e.target.closest('a.shiny-download-link');
+  if (!a) return;
+  var href = a.getAttribute('href');
+  if (!href || a.classList.contains('disabled')) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (a.dataset.busy) return;
+  a.dataset.busy = '1'; a.classList.add('lab-busy');
+  try {
+    var r = await fetch(href, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 300) || ('HTTP ' + r.status));
+    var cd = r.headers.get('content-disposition') || '';
+    var m = /filename\\*=UTF-8''([^;]+)/i.exec(cd) || /filename=\"?([^\";]+)\"?/i.exec(cd);
+    var name = m ? decodeURIComponent(m[1]) : 'download';
+    var url = URL.createObjectURL(await r.blob());
+    var t = document.createElement('a');
+    t.href = url; t.download = name; t.style.display = 'none';
+    document.body.appendChild(t); t.click(); t.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  } catch (err) {
+    alert('That download failed: ' + err.message);
+  } finally {
+    delete a.dataset.busy; a.classList.remove('lab-busy');
+  }
+}, true);"
+
+WIDE_JS <- "
+$(function () {
+  Shiny.addCustomMessageHandler('lab-wide', function (m) {
+    var el = document.getElementById(m.id);
+    if (!el) return;
+    el.classList.toggle('lab-wide', !!m.wide);
+    window.dispatchEvent(new Event('resize'));
+  });
+});"
+
 # Plain HTML tables: numbers are already rounded, so print them as written.
 as_display <- function(d) {
   d[] <- lapply(d, function(x) if (is.numeric(x)) as.character(x) else x)

@@ -101,11 +101,36 @@ lda_observed <- function(df, mode = c("cells", "wells")) {
 }
 
 # Which group pairs to compare, shared by the app and the exported script.
-lda_pairs <- function(groups, ref, mode = c("none", "ref", "all")) {
+# When the groups form panels (see group_panels), "vs ref" means "vs the
+# reference treatment inside each panel" — N16-ATRA against N16-DMSO, never
+# against Ad16-DMSO. "all" adds every pair inside a panel plus the same
+# treatment across panels.
+lda_pairs <- function(groups, ref, mode = c("none", "ref", "all"),
+                      panels = group_panels(groups)) {
   mode <- match.arg(mode)
   if (length(groups) < 2 || is.null(ref) || !ref %in% groups) return(list())
-  switch(mode,
-         none = list(),
-         ref  = lapply(setdiff(groups, ref), function(x) c(ref, x)),
-         all  = utils::combn(groups, 2, simplify = FALSE))
+  if (mode == "none") return(list())
+  if (is.null(panels))
+    return(switch(mode,
+      ref = lapply(setdiff(groups, ref), function(x) c(ref, x)),
+      all = utils::combn(groups, 2, simplify = FALSE)))
+
+  ref_lab <- as.character(panels$Label[panels$Group == ref])
+  out <- list()
+  for (pn in levels(panels$Panel)) {
+    in_p <- panels$Group[panels$Panel == pn]
+    if (mode == "ref") {
+      r <- in_p[as.character(panels$Label[panels$Panel == pn]) == ref_lab]
+      r <- if (length(r)) r[1] else in_p[1]
+      out <- c(out, lapply(setdiff(in_p, r), function(x) c(r, x)))
+    } else if (length(in_p) >= 2) {
+      out <- c(out, utils::combn(in_p, 2, simplify = FALSE))
+    }
+  }
+  if (mode == "all")
+    for (lb in levels(panels$Label)) {
+      same <- panels$Group[panels$Label == lb]
+      if (length(same) >= 2) out <- c(out, utils::combn(same, 2, simplify = FALSE))
+    }
+  out
 }

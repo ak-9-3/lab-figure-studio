@@ -47,21 +47,39 @@ looks_like_protocol <- function(df) {
 # Fuzzy header matching: strip case, spaces, underscores, dots.
 norm_name <- function(x) gsub("[^a-z0-9]", "", tolower(x))
 
-guess_col <- function(cols, aliases) {
+# Aliases are in priority order: for cell counts, "cells counted" beats
+# "cells seeded", because the count is what actually went into the well.
+guess_col <- function(cols, aliases, exclude = character()) {
   n <- norm_name(cols); a <- norm_name(aliases)
   # An empty string matches everything under grepl(), so a sheet with blank
   # or auto-generated headers would otherwise "match" every field.
-  ok <- nzchar(n) & !grepl("^[0-9]+$", n)
-  a  <- a[nzchar(a)]
+  ok <- nzchar(n) & !grepl("^[0-9]+$", n) & !cols %in% exclude
+  a  <- unique(a[nzchar(a)])
   if (!any(ok) || !length(a)) return(NA_character_)
-  hit <- which(ok & n %in% a)
-  if (length(hit)) return(cols[hit[1]])
   for (al in a) {
+    hit <- which(ok & n == al)
+    if (length(hit)) return(cols[hit[1]])
+  }
+  # Partial matches only for aliases long enough to mean something — "n"
+  # would otherwise match "condition".
+  for (al in a[nchar(a) >= 3]) {
     hit <- which(ok & (grepl(al, n, fixed = TRUE) |
                        vapply(n, grepl, logical(1), x = al, fixed = TRUE)))
     if (length(hit)) return(cols[hit[1]])
   }
   NA_character_
+}
+
+# Guess every field at once, never giving one column to two fields.
+guess_all <- function(cols, spec) {
+  taken <- character()
+  out <- list()
+  for (k in names(spec)) {
+    g <- guess_col(cols, c(k, spec[[k]]$aliases), exclude = taken)
+    out[[k]] <- if (is.na(g)) "" else g
+    if (!is.na(g)) taken <- c(taken, g)
+  }
+  out
 }
 
 required_fields <- function(spec)
@@ -85,8 +103,10 @@ dataInputUI <- function(id, spec, example_label = "Example dataset",
     conditionalPanel(
       sprintf("input['%s'] == 'paste'", ns("src")),
       textAreaInput(ns("paste"), NULL, rows = 7,
-                    placeholder = "Select cells in Excel, copy, paste here."),
-      div(class = "form-text mb-2", "Tab- or comma-separated.")
+                    placeholder = "Select the cells in Excel, copy, paste here."),
+      div(class = "form-text mb-2",
+          "Headers or no headers, any column order: the app works out which",
+          " column is which from the numbers and tells you what it decided.")
     ),
     downloadLink(ns("template"), "Download a blank template / demo CSV"),
     uiOutput(ns("detected")),
@@ -113,24 +133,39 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
     })
 
     # ---- read the file both ways, then decide ---------------------------
+    # Pasted text goes down exactly the same road as an uploaded file: it is
+    # saved to a temporary file and read both ways. So whatever you paste —
+    # with headers, without, in blocks — gets the same "work it out" logic.
+    pasted <- debounce(reactive(input$paste), 600)
+    source_file <- reactive({
+      if (identical(input$src, "file")) {
+        req(input$file)
+        return(list(path = input$file$datapath, name = input$file$name))
+      }
+      txt <- pasted(); req(txt, nzchar(trimws(txt)))
+      ext <- if (grepl("\t", txt)) "tsv" else "csv"
+      if (!grepl("\t", txt) && grepl(";", txt)) { txt <- gsub(";", "\t", txt); ext <- "tsv" }
+      f <- tempfile(fileext = paste0(".", ext))
+      writeLines(txt, f)
+      list(path = f, name = basename(f))
+    })
+
     attempts <- reactive({
-      req(input$file)
-      sh <- input$sheet %||% 1
+      src <- source_file()
+      sh <- if (identical(input$src, "file")) input$sheet %||% 1 else 1
       list(
-        plain = tryCatch(read_any(input$file$datapath, input$file$name, sh),
+        plain = tryCatch(read_any(src$path, src$name, sh),
                          error = function(e) NULL),
         prot  = if (protocol)
-          tryCatch(parse_protocol_file(input$file$datapath, input$file$name, sh),
+          tryCatch(parse_protocol_file(src$path, src$name, sh),
                    error = function(e) NULL) else NULL)
     })
 
     # How many required fields can we name from the headers alone?
     n_guessed <- function(df) {
       if (is.null(df) || !ncol(df)) return(0L)
-      sum(vapply(req_fields, function(k) {
-        g <- guess_col(names(df), c(k, spec[[k]]$aliases))
-        !is.na(g) && nzchar(g)
-      }, logical(1)))
+      g <- guess_all(names(df), spec)
+      sum(vapply(req_fields, function(k) nzchar(g[[k]]), logical(1)))
     }
 
     auto_mode <- reactive({
@@ -138,15 +173,22 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
       if (!is.null(a$prot) && n_guessed(a$plain) < length(req_fields))
         "protocol" else "plain"
     })
+    # "Use my header row" / "Work it out" is a choice about THIS data. New
+    # data, new decision: forget the override whenever the input changes.
+    override <- reactiveVal(NULL)
+    observeEvent(source_file(), override(NULL))
+    observeEvent(input$read_as, {
+      a <- tryCatch(auto_mode(), error = function(e) NULL)
+      override(if (identical(input$read_as, a)) NULL else input$read_as)
+    }, ignoreInit = TRUE)
     read_mode <- reactive({
-      if (!identical(input$src, "file")) return("plain")
-      m <- input$read_as
-      if (is.null(m) || !nzchar(m)) auto_mode() else m
+      if (identical(input$src, "example")) return("plain")
+      override() %||% auto_mode()
     })
 
     # ---- tell them what we did, and let them overrule it ----------------
     output$detected <- renderUI({
-      if (!identical(input$src, "file")) return(NULL)
+      if (identical(input$src, "example")) return(NULL)
       a <- tryCatch(attempts(), error = function(e) NULL)
       if (is.null(a)) return(NULL)
       m <- read_mode()
@@ -156,8 +198,8 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
         if (m == "protocol") div(
           class = "alert alert-success py-2 px-2 small mb-2",
           bsicons::bs_icon("magic"), strong(" Read as a lab sheet."),
-          " Your file has no usable header row, so the columns were worked out",
-          " from the numbers themselves — no naming needed.")
+          " No usable header row, so the columns were worked out from the",
+          " numbers themselves — no naming needed.")
         else div(
           class = "alert alert-info py-2 px-2 small mb-2",
           bsicons::bs_icon("table"), strong(" Read as a plain table."),
@@ -192,21 +234,20 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
     raw <- reactive({
       switch(input$src,
         example = example,
-        paste   = { req(input$paste); read_pasted(input$paste) },
-        file    = { a <- attempts()
-                    if (read_mode() == "protocol") a$prot else a$plain })
+        { a <- attempts()
+          if (read_mode() == "protocol") a$prot else a$plain })
     })
 
     # Output that is already in our own shape needs no mapping step.
     canonical <- reactive(
-      identical(input$src, "example") ||
-        (identical(input$src, "file") && identical(read_mode(), "protocol")))
+      identical(input$src, "example") || identical(read_mode(), "protocol"))
 
     # ---- the mapping step, only when it is actually needed --------------
     output$mapping <- renderUI({
       df <- tryCatch(raw(), error = function(e) NULL)
       if (is.null(df) || !ncol(df) || canonical()) return(NULL)
       cols <- names(df)
+      gs <- guess_all(cols, spec)
       tagList(
         div(class = "fw-bold mb-1", "Which column is which?"),
         div(class = "form-text mb-2",
@@ -214,7 +255,7 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
             " actually in that column."),
         lapply(names(spec), function(k) {
           s <- spec[[k]]
-          guess <- guess_col(cols, c(k, s$aliases))
+          guess <- gs[[k]]
           blank <- stats::setNames(
             "", if (isTRUE(s$optional)) "— none —" else "— choose —")
           shown <- stats::setNames(cols, vapply(cols, function(cn)
@@ -222,7 +263,7 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
           selectInput(ns(paste0("map_", k)),
                       paste0(s$label, if (isTRUE(s$optional)) " (optional)" else ""),
                       choices  = c(blank, shown),
-                      selected = if (is.na(guess)) "" else guess)
+                      selected = guess)
         })
       )
     })
@@ -243,8 +284,7 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
       pick <- function(k) {
         v <- input[[paste0("map_", k)]]
         if (!is.null(v)) return(v)
-        g <- guess_col(names(df), c(k, spec[[k]]$aliases))
-        if (is.na(g)) "" else g
+        guess_all(names(df), spec)[[k]]
       }
       a <- pick(pr[1]); b <- pick(pr[2])
       if (!nzchar(a) || !nzchar(b) || !a %in% names(df) || !b %in% names(df))
@@ -287,10 +327,7 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
           sel <- input[[paste0("map_", k)]]
           # Before the picker has rendered its input, use the guess directly,
           # so a well-formed file needs no round-trip and no empty flash.
-          if (is.null(sel)) {
-            g <- guess_col(names(df), c(k, spec[[k]]$aliases))
-            sel <- if (is.na(g)) "" else g
-          }
+          if (is.null(sel)) sel <- guess_all(names(df), spec)[[k]]
           if (!nzchar(sel)) {
             validate(need(isTRUE(spec[[k]]$optional),
                           sprintf("Still need to know which column holds '%s'.",
@@ -320,9 +357,15 @@ dataInputServer <- function(id, spec, example, protocol = FALSE) {
     output$status <- renderUI({
       df <- tryCatch(tidy(), error = function(e) NULL)
       if (is.null(df)) return(NULL)
-      div(class = "alert alert-success py-1 px-2 mt-2 mb-0 small",
-          sprintf("%d rows ready.", nrow(df)))
+      div(class = "alert alert-success py-1 px-2 mt-2 mb-0 small d-flex justify-content-between align-items-center",
+          span(sprintf("%d rows ready.", nrow(df))),
+          downloadLink(ns("dl_data"), tagList(bsicons::bs_icon("download"), " this data as CSV")))
     })
+    outputOptions(output, "status", suspendWhenHidden = FALSE)
+
+    output$dl_data <- downloadHandler(
+      function() paste0(id, "_data.csv"),
+      function(f) utils::write.csv(tidy(), f, row.names = FALSE))
 
     tidy
   })

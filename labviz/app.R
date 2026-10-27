@@ -51,7 +51,7 @@ ui <- page_navbar(
   title = span(bsicons::bs_icon("bar-chart-line-fill"), " Lab Figure Studio"),
   window_title = "Lab Figure Studio",
   theme = theme_app, fillable = FALSE,
-  header = tags$head(includeCSS("www/custom.css"), tags$script(HTML(COLOR_INPUT_JS))),
+  header = tags$head(includeCSS("www/custom.css"), tags$script(HTML(COLOR_INPUT_JS)), tags$script(HTML(DOWNLOAD_JS)), tags$script(HTML(WIDE_JS))),
 
   nav_panel(
     "Start", icon = bsicons::bs_icon("house"),

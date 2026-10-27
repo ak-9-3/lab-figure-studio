@@ -1,13 +1,22 @@
 # ── Module: limiting-dilution assay ───────────────────────────────────────
 
 LDA_SPEC_CELLS <- list(
-  CellCount = list(label = "Cells seeded", type = "numeric",
-                   aliases = c("cells", "cellcount", "cellsseeded", "seeded", "input", "n")),
+  # Many sheets have two seeding columns: what the protocol said (100, 200…)
+  # and what was actually counted into the well (87, 179…). The counted one
+  # goes in the model, so its names come first.
+  CellCount = list(label = "Cells seeded (the counted number, if you have both)", type = "numeric",
+                   aliases = c("cellscounted", "counted", "actualcells", "actual", "cellcount",
+                               "cells", "cellsseeded", "seeded", "input", "n")),
   Organoids = list(label = "Organoids formed", type = "numeric",
                    aliases = c("organoid", "colony", "colonies", "sphere", "spheroid",
                                "formed", "positive", "count")),
   Group     = list(label = "Group / condition", type = "character",
-                   aliases = c("group", "condition", "treatment", "sgrna", "guide", "genotype")),
+                   aliases = c("group", "condition", "treatment", "sample", "sgrna", "guide",
+                               "genotype", "name")),
+  NominalCells = list(label = "Protocol seeding number (only used to check the counted one)",
+                      type = "numeric", optional = TRUE,
+                      aliases = c("cellsseeded", "seeded", "seeding", "protocol", "nominal",
+                                  "target", "planned", "intended")),
   Replicate = list(label = "Replicate", type = "character", optional = TRUE,
                    aliases = c("replicate", "rep", "biorep")),
   Batch     = list(label = "Extra column (cell line, screen, timepoint)", type = "character", optional = TRUE,
@@ -113,7 +122,7 @@ ldaUI <- function(id) {
     uiOutput(ns("nominal_warning")),
     uiOutput(ns("showing_bar")),
     layout_columns(
-      col_widths = c(6, 6),
+      id = ns("figs"), col_widths = c(6, 6),
       card(full_screen = TRUE,
         card_header("Stem cell frequency"),
         plotOutput(ns("bar"), height = "520px"),
@@ -264,18 +273,29 @@ ldaServer <- function(id, helper_dir) {
     })
 
     output$colour_ui <- renderUI({
-      g <- sel_groups(); d <- pal_for(g, input$palette)
+      g <- sel_groups(); d <- lda_default_cols(g, input$palette)
       lapply(g, function(k)
         colorInput(ns(paste0("col_", make.names(k))), k, value = unname(d[k])))
     })
 
     cols <- reactive({
-      g <- sel_groups(); d <- pal_for(g, input$palette)
+      g <- sel_groups(); d <- lda_default_cols(g, input$palette)
       v <- vapply(g, function(k) {
         x <- input[[paste0("col_", make.names(k))]]
         if (is.null(x) || !nzchar(x)) unname(d[k]) else x
       }, character(1))
       stats::setNames(v, g)
+    })
+
+    # More bars need a wider figure; widen the download to fit (the slider
+    # still lets them pick anything).
+    observeEvent(sel_groups(), {
+      g <- sel_groups(); pan <- group_panels(g)
+      slots <- length(g) + if (is.null(pan)) 0 else nlevels(pan$Panel) - 1
+      w <- if (slots <= 6) 5.5 else min(14, round((1.8 + 0.55 * slots) * 2) / 2)
+      updateSliderInput(session, "w", value = w)
+      # Many bars: give each figure the full page width instead of half.
+      session$sendCustomMessage("lab-wide", list(id = ns("figs"), wide = slots > 8))
     })
 
     # accordion panels start collapsed; without this their inputs never exist
