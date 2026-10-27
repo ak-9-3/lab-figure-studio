@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lab Figure Studio</title>
+    <script
+      src="./shinylive/load-shinylive-sw.js"
+      type="module"
+    ></script>
+    <script type="module">
+      import { runExportedApp } from "./shinylive/shinylive.js";
+      runExportedApp({
+        id: "root",
+        appEngine: "r",
+        relPath: "",
+      });
+    </script>
+    <link rel="stylesheet" href="./shinylive/style-resets.css" />
+    <link rel="stylesheet" href="./shinylive/shinylive.css" />
+    
+  </head>
+  <body>
+    
+    <div style="height: 100vh; width: 100vw" id="root"></div>
+
+<div id="lab-loading" style="position:fixed;inset:0;z-index:9999;background:#fff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  color:#1f2a37;text-align:center;padding:24px;">
+  <div style="font-size:26px;font-weight:700;">Lab Figure Studio</div>
+  <div style="font-size:17px;">Loading R into your browser&hellip;
+    <span id="lab-loading-sec" style="color:#6b7280;font-variant-numeric:tabular-nums;"></span></div>
+  <div style="width:280px;height:6px;border-radius:3px;background:#e5e7eb;overflow:hidden;">
+    <div style="width:40%;height:100%;background:#0072B2;border-radius:3px;
+      animation:labslide 1.4s ease-in-out infinite;"></div></div>
+  <div style="font-size:14px;color:#6b7280;max-width:440px;line-height:1.5;">
+    The first visit downloads R itself, so it takes up to a minute.
+    After that it opens in seconds.<br>
+    Your data never leaves this computer.</div>
+  <div id="lab-loading-help" style="display:none;font-size:14px;color:#92400e;
+    background:#fef3c7;border-radius:8px;padding:10px 14px;max-width:440px;line-height:1.5;">
+    Still loading? If you opened this link inside another app (Slack, Teams,
+    email, Claude), open it in Chrome, Safari or Firefox instead &mdash; those
+    in-app browsers cannot run it.</div>
+</div>
+<style>@keyframes labslide{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}</style>
+<script>
+(function () {
+  var t0 = Date.now(), sec = document.getElementById("lab-loading-sec");
+  var iv = setInterval(function () {
+    var s = Math.round((Date.now() - t0) / 1000);
+    sec.textContent = s + "s";
+    if (s >= 90) document.getElementById("lab-loading-help").style.display = "block";
+    try {
+      var f = document.querySelector("#root iframe"), w = f && f.contentWindow;
+      if (w && w.Shiny && w.Shiny.shinyapp && w.Shiny.shinyapp.isConnected()) {
+        document.getElementById("lab-loading").remove(); clearInterval(iv);
+      }
+    } catch (e) {}
+  }, 500);
+})();
+</script>
+    
+  </body>
+</html>
