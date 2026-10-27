@@ -112,9 +112,9 @@ volcanoSidebarUI <- function(id) {
     accordion_panel("4 · Figure", icon = bsicons::bs_icon("sliders"),
       textInput(ns("title"), "Title", "Differential expression"),
       textInput(ns("sub"), "Subtitle", ""),
-      colourInput(ns("col_up"),   "Up",   "#D55E00"),
-      colourInput(ns("col_down"), "Down", "#0072B2"),
-      colourInput(ns("col_ns"),   "Not significant", "#C8C8C8"),
+      colorInput(ns("col_up"),   "Up",   "#D55E00"),
+      colorInput(ns("col_down"), "Down", "#0072B2"),
+      colorInput(ns("col_ns"),   "Not significant", "#C8C8C8"),
       sliderInput(ns("pt"), "Point size", 0.4, 4, 1.6, 0.1),
       sliderInput(ns("alpha"), "Opacity", 0.1, 1, 0.75, 0.05),
       numericInput(ns("ycap"), "Cap y axis at (0 = off)", 0, 0, 400, 5),
@@ -134,7 +134,7 @@ volcanoUI <- function(id) {
         downloadButton(ns("pdf"), "PDF", class = "btn-sm btn-outline-primary"),
         downloadButton(ns("svg"), "SVG", class = "btn-sm btn-outline-primary"),
         downloadButton(ns("png"), "PNG", class = "btn-sm btn-outline-primary"))),
-    card(card_header("Significant hits"), DTOutput(ns("tbl")),
+    card(card_header("Significant hits"), uiOutput(ns("tbl_note")), div(class = "table-responsive", style = "max-height:480px; overflow-y:auto;", tableOutput(ns("tbl"))),
       card_footer(downloadButton(ns("csv"), "Download hits (CSV)",
                                  class = "btn-sm btn-outline-primary"))))
 }
@@ -177,13 +177,17 @@ volcanoServer <- function(id) {
       keep <- intersect(c("Gene", "log2FC", "PValue", "padj", "Status"), names(d))
       d[, keep, drop = FALSE]
     })
-    output$tbl <- renderDT({
+    output$tbl <- renderTable({
       d <- hits()
       validate(need(nrow(d) > 0, "Nothing passes the current thresholds."))
       for (k in intersect(c("log2FC", "PValue", "padj"), names(d)))
         d[[k]] <- signif(d[[k]], 3)
-      datatable(d, rownames = FALSE, class = "compact stripe",
-                options = list(pageLength = 12, scrollX = TRUE))
+      as_display(utils::head(d, 100))
+    }, striped = TRUE, spacing = "s", width = "100%", align = "l")
+    output$tbl_note <- renderUI({
+      n <- nrow(hits()); if (n <= 100) return(NULL)
+      div(class = "form-text mb-2",
+          sprintf("Showing the top 100 of %d hits by p-value. The CSV has all of them.", n))
     })
     output$csv <- downloadHandler("volcano_hits.csv",
       function(f) utils::write.csv(hits(), f, row.names = FALSE))

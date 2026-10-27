@@ -7,8 +7,14 @@
 
 save_plot <- function(file, plot, width, height, dpi = 450) {
   dev <- tools::file_ext(file)
-  if (dev == "svg" && requireNamespace("svglite", quietly = TRUE)) {
-    ggplot2::ggsave(file, plot, width = width, height = height, device = svglite::svglite)
+  if (dev == "svg") {
+    # svglite is referenced by name, not as svglite::, so the web build does
+    # not bundle it (it drags in ~15 MB). Locally it is used when installed;
+    # in the browser R's own svg() device does the job.
+    pkg <- "svglite"
+    svg_dev <- if (requireNamespace(pkg, quietly = TRUE))
+      getExportedValue(pkg, "svglite") else grDevices::svg
+    ggplot2::ggsave(file, plot, width = width, height = height, device = svg_dev)
   } else if (dev == "pdf") {
     ggplot2::ggsave(file, plot, width = width, height = height,
                     device = pdf_device())

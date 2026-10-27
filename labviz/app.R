@@ -13,15 +13,20 @@
 # is no CRAN to install from — so only offer to install when running locally.
 if (!(identical(R.version$os, "emscripten") ||
       grepl("emscripten", R.version$platform, fixed = TRUE))) {
-  REQUIRED <- c("shiny", "bslib", "bsicons", "ggplot2", "DT", "colourpicker",
-                "scales", "ggrepel", "svglite", "zip", "ragg")
+  REQUIRED <- c("shiny", "bslib", "bsicons", "ggplot2", "scales", "ggrepel",
+                "zip", "readxl")
   missing <- REQUIRED[!vapply(REQUIRED, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing)) {
     message("Installing: ", paste(missing, collapse = ", "))
     utils::install.packages(missing)
   }
 }
-library(shiny); library(bslib); library(ggplot2); library(DT); library(colourpicker)
+library(shiny); library(bslib); library(ggplot2)
+
+# Shiny draws every on-screen plot with ragg whenever it is installed, and in
+# the browser that costs a 13 MB Unicode download before the first figure.
+# R's own png() looks the same here, so use it.
+options(shiny.useragg = FALSE)
 
 HELPER_DIR <- normalizePath("R", mustWork = FALSE)
 
@@ -46,7 +51,7 @@ ui <- page_navbar(
   title = span(bsicons::bs_icon("bar-chart-line-fill"), " Lab Figure Studio"),
   window_title = "Lab Figure Studio",
   theme = theme_app, fillable = FALSE,
-  header = tags$head(includeCSS("www/custom.css")),
+  header = tags$head(includeCSS("www/custom.css"), tags$script(HTML(COLOR_INPUT_JS))),
 
   nav_panel(
     "Start", icon = bsicons::bs_icon("house"),

@@ -90,7 +90,37 @@ pdf_device <- local({
   }
 })
 
-# ragg renders PNGs without needing X11/cairo, which is what webR has.
-png_device <- function() {
-  if (requireNamespace("ragg", quietly = TRUE)) ragg::agg_png else grDevices::png
+# PNG downloads use R's own png(). ragg would need textshaping, and the web
+# build downloads every referenced package up front — a 13 MB Unicode library
+# on every first visit for no visible difference.
+png_device <- function() grDevices::png
+
+# A colour picker using the browser's own <input type="color">. The
+# colourpicker package did the same job but pulled in R Markdown, knitr and
+# shinyjs — several megabytes of download for one widget.
+colorInput <- function(inputId, label, value = "#000000") {
+  div(class = "shiny-input-container mb-2",
+      tags$label(class = "control-label small", `for` = inputId, label),
+      tags$input(id = inputId, type = "color", value = value,
+                 class = "lab-color form-control form-control-color w-100"))
+}
+
+COLOR_INPUT_JS <- "
+$(function () {
+  var b = new Shiny.InputBinding();
+  $.extend(b, {
+    find: function (scope) { return $(scope).find('input[type=color].lab-color'); },
+    getValue: function (el) { return el.value; },
+    setValue: function (el, v) { el.value = v; },
+    subscribe: function (el, cb) { $(el).on('input.lab change.lab', function () { cb(true); }); },
+    unsubscribe: function (el) { $(el).off('.lab'); },
+    receiveMessage: function (el, d) { if (d.value) { el.value = d.value; $(el).trigger('change'); } }
+  });
+  Shiny.inputBindings.register(b, 'lab.color');
+});"
+
+# Plain HTML tables: numbers are already rounded, so print them as written.
+as_display <- function(d) {
+  d[] <- lapply(d, function(x) if (is.numeric(x)) as.character(x) else x)
+  d
 }

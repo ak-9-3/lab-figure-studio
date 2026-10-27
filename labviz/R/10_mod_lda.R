@@ -131,10 +131,10 @@ ldaUI <- function(id) {
     ),
     layout_columns(
       col_widths = c(5, 7),
-      card(card_header("Frequencies"), DTOutput(ns("freq")),
+      card(card_header("Frequencies"), div(class = "table-responsive", tableOutput(ns("freq"))),
            card_footer(downloadButton(ns("freq_csv"), "CSV",
                                       class = "btn-sm btn-outline-primary"))),
-      card(card_header("Group comparisons"), DTOutput(ns("comp_tbl")),
+      card(card_header("Group comparisons"), div(class = "table-responsive", tableOutput(ns("comp_tbl"))),
            uiOutput(ns("gof")),
            card_footer(downloadButton(ns("comp_csv"), "CSV",
                                       class = "btn-sm btn-outline-primary")))
@@ -266,7 +266,7 @@ ldaServer <- function(id, helper_dir) {
     output$colour_ui <- renderUI({
       g <- sel_groups(); d <- pal_for(g, input$palette)
       lapply(g, function(k)
-        colourInput(ns(paste0("col_", make.names(k))), k, value = unname(d[k])))
+        colorInput(ns(paste0("col_", make.names(k))), k, value = unname(d[k])))
     })
 
     cols <- reactive({
@@ -323,17 +323,16 @@ ldaServer <- function(id, helper_dir) {
     output$bar   <- renderPlot(bar_plot(),   res = 96)
     output$curve <- renderPlot(curve_plot(), res = 96)
 
-    output$freq <- renderDT({
+    output$freq <- renderTable({
       d <- lda()$est[, c("Group", "n_rows", "Frequency", "CI_low", "CI_high", "1 in")]
       d$Frequency <- signif(d$Frequency, 4)
       d$CI_low    <- signif(d$CI_low, 4)
       d$CI_high   <- signif(d$CI_high, 4)
       d$`1 in`    <- round(d$`1 in`, 1)
-      datatable(d, rownames = FALSE, class = "compact stripe",
-                options = list(dom = "t", paging = FALSE, scrollX = TRUE))
-    })
+      as_display(d)
+    }, striped = TRUE, spacing = "s", width = "100%", align = "l")
 
-    output$comp_tbl <- renderDT({
+    output$comp_tbl <- renderTable({
       d <- comps()
       validate(need(!is.null(d), "No comparisons selected."))
       out <- data.frame(Comparison = paste(d$B, "vs", d$A),
@@ -341,9 +340,8 @@ ldaServer <- function(id, helper_dir) {
                         `95% CI` = sprintf("%.2f–%.2f", d$CI_low, d$CI_high),
                         p = fmt_p(d$p), `p adj` = fmt_p(d$p_adj), sig = d$stars,
                         check.names = FALSE)
-      datatable(out, rownames = FALSE, class = "compact stripe",
-                options = list(dom = "t", paging = FALSE, scrollX = TRUE))
-    })
+      as_display(out)
+    }, striped = TRUE, spacing = "s", width = "100%", align = "l")
 
     output$gof <- renderUI({
       l <- lda()

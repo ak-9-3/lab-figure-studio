@@ -158,9 +158,9 @@ qpcrUI <- function(id) {
         downloadButton(ns("svg"), "SVG", class = "btn-sm btn-outline-primary"),
         downloadButton(ns("png"), "PNG", class = "btn-sm btn-outline-primary"))),
     layout_columns(col_widths = c(7, 5),
-      card(card_header("Per-replicate values"), DTOutput(ns("tbl")),
+      card(card_header("Per-replicate values"), div(class = "table-responsive", style = "max-height:420px; overflow-y:auto;", tableOutput(ns("tbl"))),
            card_footer(downloadButton(ns("csv"), "CSV", class = "btn-sm btn-outline-primary"))),
-      card(card_header("Welch t-test on ΔCt (BH adjusted)"), DTOutput(ns("stats")))))
+      card(card_header("Welch t-test on ΔCt (BH adjusted)"), div(class = "table-responsive", tableOutput(ns("stats"))))))
 }
 
 qpcrServer <- function(id) {
@@ -194,7 +194,7 @@ qpcrServer <- function(id) {
     output$colour_ui <- renderUI({
       g <- req(input$groups); d <- pal_for(g, input$palette)
       lapply(g, function(k)
-        colourInput(ns(paste0("col_", make.names(k))), k, value = unname(d[k])))
+        colorInput(ns(paste0("col_", make.names(k))), k, value = unname(d[k])))
     })
     cols <- reactive({
       g <- req(input$groups); d <- pal_for(g, input$palette)
@@ -221,20 +221,18 @@ qpcrServer <- function(id) {
                 input$ylab, input$logy, input$dots, input$ncol))
 
     output$plot <- renderPlot(plot_obj(), res = 96)
-    output$tbl <- renderDT({
+    output$tbl <- renderTable({
       d <- m()[, c("Gene", "Group", "Replicate", "Ct", "Ct_hk", "dCt", "ddCt", "Fold")]
       d[, 4:8] <- lapply(d[, 4:8], function(x) round(x, 3))
-      datatable(d, rownames = FALSE, class = "compact stripe",
-                options = list(pageLength = 10, scrollX = TRUE))
-    })
-    output$stats <- renderDT({
+      as_display(d)
+    }, striped = TRUE, spacing = "s", width = "100%", align = "l")
+    output$stats <- renderTable({
       t <- tests(); validate(need(!is.null(t), "Only one group — nothing to test."))
       d <- data.frame(Gene = t$Gene, Comparison = paste(t$B, "vs", t$A),
                       Fold = signif(t$Fold, 3), p = fmt_p(t$p),
                       `p adj` = fmt_p(t$p_adj), sig = t$stars, check.names = FALSE)
-      datatable(d, rownames = FALSE, class = "compact stripe",
-                options = list(dom = "t", paging = FALSE, scrollX = TRUE))
-    })
+      as_display(d)
+    }, striped = TRUE, spacing = "s", width = "100%", align = "l")
     output$csv <- downloadHandler("qPCR_ddCt.csv",
       function(f) utils::write.csv(m(), f, row.names = FALSE))
     dl <- function(ext) downloadHandler(paste0("qPCR.", ext),
