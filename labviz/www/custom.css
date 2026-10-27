@@ -1,0 +1,13 @@
+/* Small refinements on top of the Bootstrap theme. */
+.card { border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.card-header { font-weight: 600; letter-spacing: .01em; }
+.accordion-button { font-weight: 600; }
+.form-text { font-size: .8rem; }
+.shiny-input-container { margin-bottom: .6rem; }
+.bslib-sidebar-layout > .sidebar { font-size: .9rem; }
+table.dataTable tbody td { padding: 4px 8px; }
+.navbar-brand { font-weight: 700; letter-spacing: -.01em; }
+
+/* A plot rendered for a wider container must shrink, never crop. */
+.shiny-plot-output img { max-width: 100%; height: auto; }
+.shiny-plot-output { overflow: hidden; }
