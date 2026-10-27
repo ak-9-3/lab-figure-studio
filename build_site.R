@@ -1,12 +1,10 @@
-# Build the website: compile the Shiny app to WebAssembly, then add a proper
-# loading screen. Run from this folder:   Rscript build_site.R
+# Build the website: compile the Shiny app to WebAssembly, then add a proper loading screen. Run from this folder:   Rscript build_site.R
 #
-# Output goes to docs/ — that folder is what gets published to GitHub Pages.
+# Output goes to docs which is the folder that gets published to GitHub Pages.
 
 shinylive::export("labviz", "docs")
 
-# The stock page is a blank spinner for the ~minute it takes a first-time
-# visitor to download R. That reads as "broken". Say what is happening.
+# The stock page is a blank spinner for the ~minute it takes a first-time visitor to download R. 
 loading <- '
 <div id="lab-loading" style="position:fixed;inset:0;z-index:9999;background:#fff;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
